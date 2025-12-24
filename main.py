@@ -9,6 +9,7 @@ log_queue = queue.Queue()
 is_downloading = False
 log_visible = False
 has_log_output = False
+process = None
 
 progress_pattern = re.compile(r"(\d+(?:\.\d+)?)%")
 
@@ -30,6 +31,7 @@ def download():
     has_log_output = False
 
     button.config(state="disabled")
+    cancel_btn.config(state="normal")
     toggle_btn.config(state="disabled")
     copy_btn.config(state="disabled")
     progress['value'] = 0
@@ -37,7 +39,7 @@ def download():
     log.delete("1.0", "end")
 
     def worker():
-        global is_downloading, has_log_output
+        global is_downloading, has_log_output, process
 
         process = subprocess.Popen(
             ["yt-dlp", url],
@@ -48,17 +50,24 @@ def download():
 
         assert process.stdout is not None
         for line in process.stdout:
+            if not is_downloading:
+                break
+
             has_log_output = True
             log_queue.put(("log", line))
 
             match = progress_pattern.search(line)
+
             if match:
                 percent = float(match.group(1))
                 log_queue.put(("progress", percent))
 
         exit_code = process.wait()
 
-        if exit_code == 0:
+
+        if not is_downloading:
+            log_queue.put(("done_cancel", None))
+        elif exit_code == 0:
             log_queue.put(("done_success", None))
         else:
             log_queue.put(("done_error", None))
@@ -66,6 +75,16 @@ def download():
         is_downloading = False
 
     threading.Thread(target=worker, daemon=True).start()
+
+def cancel_download():
+    global process, is_downloading
+
+    if process and is_downloading:
+        is_downloading = False
+        try:
+            process.terminate()
+        except Exception:
+            pass
 
 def update_ui():
     while not log_queue.empty():
@@ -75,21 +94,35 @@ def update_ui():
             log.insert("end", value)
             log.see("end")
             toggle_btn.config(state="normal")
-            copy_btn.config(state="normal")
+
+            if not is_downloading:
+                copy_btn.config(state="normal")
+
 
         elif msg_type == "progress":
-            progress['value'] = value
+             progress['value'] = value
 
         elif msg_type == "done_success":
-            progress['value'] = 100
-            button.config(state="normal")
-            status_label.config(text="Completed", fg="green")
-            log.insert("end", "Download completed successfully.\n")
+             progress['value'] = 100
+             button.config(state="normal")
+             cancel_btn.config(state="disabled")
+             copy_btn.config(state="normal")
+             status_label.config(text="Completed", fg="green")
+             log.insert("end", "Download completed successfully.\n")
+
+        elif msg_type == "done_cancel":
+             button.config(state="normal")
+             cancel_btn.config(state="disabled")
+             copy_btn.config(state="normal")
+             status_label.config(text="Cancelled", fg="orange")
+             log.insert("end", '\nDownload Cancelled')
 
         elif msg_type == "done_error":
-            button.config(state="normal")
-            status_label.config(text="Error occurred", fg="red")
-            log.insert("end", "\nDownload failed.\n")
+             button.config(state="normal")
+             cancel_btn.config(state="disabled")
+             copy_btn.config(state="normal")
+             status_label.config(text="Error occurred", fg="red")
+             log.insert("end", "\nDownload failed.\n")
 
     root.after(100, update_ui)
 
@@ -122,8 +155,22 @@ root.title("YT-DLP GUI")
 entry = tk.Entry(root, width=100)
 entry.pack(fill="x", padx=10, pady=5)
 
-button = tk.Button(root, text="Download", command=download)
+button = tk.Button(
+    root,
+    text="Download",
+    command=download
+)
+
 button.pack(pady=5)
+
+cancel_btn = tk.Button(
+    root,
+    text="Cancel",
+    command=lambda: cancel_download(),
+    state="disabled"
+)
+
+cancel_btn.pack(pady=5)
 
 progress = ttk.Progressbar(
     root,
