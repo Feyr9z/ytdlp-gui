@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import ttk
+from tkinter import filedialog
 import subprocess
 import threading
 import queue
@@ -10,7 +11,7 @@ is_downloading = False
 log_visible = False
 has_log_output = False
 process = None
-
+folder_label = None
 
 progress_pattern = re.compile(r"(\d+(?:\.\d+)?)%")
 
@@ -27,6 +28,8 @@ def download():
     if not is_valid_url(url):
         status_label.config(text="Invalid URL", fg="red")
         return
+
+    choose_folder_btn.config(state="disabled")
 
     is_downloading = True
     has_log_output = False
@@ -47,6 +50,9 @@ def download():
 
         cmd = ["yt-dlp", url]
 
+        if output_dir:
+            cmd += ["-P", output_dir]
+
         if output_mode.get() == "audio":
             cmd += ["-x", "--audio-format", "mp3"]
 
@@ -56,6 +62,11 @@ def download():
             stderr=subprocess.STDOUT,
             text=True
         )
+
+        if output_dir:
+            log_queue.put(("log", f"[INFO] Output idr: {output_dir}\n"))
+        else:
+            log_queue.put(("log", "[INFO] Output dir: default\n"))
 
         log_queue.put(("log", f"[INFO] Mode: {output_mode.get()}\n"))
 
@@ -149,6 +160,16 @@ def update_ui():
 
     root.after(100, update_ui)
 
+def choose_folder():
+    global output_dir
+
+    path = filedialog.askdirectory()
+    if not path:
+        return
+
+    output_dir = path
+    folder_label.config(text=f"Output : {path}")
+
 def toggle_log():
     global log_visible
 
@@ -175,12 +196,30 @@ def copy_log():
 root = tk.Tk()
 root.title("YT-DLP GUI")
 output_mode = tk.StringVar(value="video")
+output_dir = None
 
 entry = tk.Entry(root, width=100)
 entry.pack(fill="x", padx=10, pady=5)
 
 preset_frame = tk.Frame(root)
 preset_frame.pack(pady=5)
+
+folder_frame = tk.Frame(root)
+folder_frame.pack(pady=5, fill="x")
+
+folder_label = tk.Label(
+    folder_frame,
+    text="Ouput: (default)",
+    anchor="w"
+)
+folder_label.pack(side="left", padx=5, expand=True, fill="x")
+
+choose_folder_btn = tk.Button(
+    folder_frame,
+    text="Choose Folder",
+    command=lambda: choose_folder()
+)
+choose_folder_btn.pack(side="right", padx=5)
 
 tk.Radiobutton(
     preset_frame,
