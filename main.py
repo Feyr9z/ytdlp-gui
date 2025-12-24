@@ -46,6 +46,7 @@ def download():
             text=True
         )
 
+        assert process.stdout is not None
         for line in process.stdout:
             has_log_output = True
             log_queue.put(("log", line))
