@@ -11,6 +11,7 @@ log_visible = False
 has_log_output = False
 process = None
 
+
 progress_pattern = re.compile(r"(\d+(?:\.\d+)?)%")
 
 def is_valid_url(url: str) -> bool:
@@ -38,15 +39,25 @@ def download():
     status_label.config(text="Downloading ...", fg="black")
     log.delete("1.0", "end")
 
+    for child in preset_frame.winfo_children():
+        child.config(state="disabled")
+
     def worker():
         global is_downloading, has_log_output, process
 
+        cmd = ["yt-dlp", url]
+
+        if output_mode.get() == "audio":
+            cmd += ["-x", "--audio-format", "mp3"]
+
         process = subprocess.Popen(
-            ["yt-dlp", url],
+            cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True
         )
+
+        log_queue.put(("log", f"[INFO] Mode: {output_mode.get()}\n"))
 
         assert process.stdout is not None
         for line in process.stdout:
@@ -110,6 +121,10 @@ def update_ui():
              status_label.config(text="Completed", fg="green")
              log.insert("end", "Download completed successfully.\n")
 
+             for child in preset_frame.winfo_children():
+                 child.config(state="normal")
+
+
         elif msg_type == "done_cancel":
              button.config(state="normal")
              cancel_btn.config(state="disabled")
@@ -117,12 +132,20 @@ def update_ui():
              status_label.config(text="Cancelled", fg="orange")
              log.insert("end", '\nDownload Cancelled')
 
+             for child in preset_frame.winfo_children():
+                 child.config(state="normal")
+
+
         elif msg_type == "done_error":
              button.config(state="normal")
              cancel_btn.config(state="disabled")
              copy_btn.config(state="normal")
              status_label.config(text="Error occurred", fg="red")
              log.insert("end", "\nDownload failed.\n")
+
+             for child in preset_frame.winfo_children():
+                 child.config(state="normal")
+
 
     root.after(100, update_ui)
 
@@ -151,9 +174,27 @@ def copy_log():
 
 root = tk.Tk()
 root.title("YT-DLP GUI")
+output_mode = tk.StringVar(value="video")
 
 entry = tk.Entry(root, width=100)
 entry.pack(fill="x", padx=10, pady=5)
+
+preset_frame = tk.Frame(root)
+preset_frame.pack(pady=5)
+
+tk.Radiobutton(
+    preset_frame,
+    text="Video",
+    variable=output_mode,
+    value="video"
+).pack(side="left", padx=5)
+
+tk.Radiobutton(
+    preset_frame,
+    text="Audio(MP3)",
+    variable=output_mode,
+    value="audio"
+).pack(side="left", padx=5)
 
 button = tk.Button(
     root,
